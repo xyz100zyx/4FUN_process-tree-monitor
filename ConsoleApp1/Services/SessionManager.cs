@@ -6,9 +6,10 @@ public class SessionManager {
 
     private System.Timers.Timer _timer = new();
 
-    public SessionManager(uint sessionInterval, ElapsedEventHandler handler)
+    public SessionManager(double sessionInterval, ElapsedEventHandler handler)
     {
         _timer.Interval = sessionInterval;
         _timer.Elapsed += handler;
+        _timer.Start();
     }
 }
