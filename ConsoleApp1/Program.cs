@@ -7,7 +7,7 @@ class Program
     {
         using var monitor = new ProcessTreeMonitor();
 
-        monitor._onProcessTreeChange += (node, changeType) =>
+        monitor.onProcessTreeChange += (node, changeType) =>
         {
             Console.WriteLine(
                 $"[{changeType,-10}] PID={node.ProcessId,-6} PPID={node.ParentProcessId,-6} {node.ProcessName}"
@@ -15,6 +15,14 @@ class Program
         };
 
         monitor.Start();
+
+        PMSessionManger pmSessionManager = new(monitor);
+        pmSessionManager.InitSessionManagement();
+
+        pmSessionManager.onSessionRotation += (mcs) =>
+        {
+            PrintTree(monitor);
+        }; 
 
         while (true)
         {

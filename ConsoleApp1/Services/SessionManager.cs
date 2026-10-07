@@ -1,15 +1,29 @@
-﻿using System.Timers;
+﻿namespace ConsoleApp1.Services;
 
-namespace ConsoleApp1.Services;
+public class PMSessionManger(ProcessTreeMonitor processMonitor): IDisposable
+{
 
-public class SessionManager {
+    public Action<int>? onSessionRotation;
 
-    private System.Timers.Timer _timer = new();
-
-    public SessionManager(double sessionInterval, ElapsedEventHandler handler)
+    private readonly System.Timers.Timer _timer = new(5_000)
     {
-        _timer.Interval = sessionInterval;
-        _timer.Elapsed += handler;
+        AutoReset = true,
+    };
+    
+    public void InitSessionManagement()
+    {
+        _timer.Elapsed += (sender, e) =>
+        {
+            processMonitor.CaptureCurrentState();
+            onSessionRotation?.Invoke(e.SignalTime.Microsecond);
+        };
+
         _timer.Start();
+    }
+
+    public void Dispose()
+    {
+        _timer.Stop();
+        _timer.Dispose();
     }
 }

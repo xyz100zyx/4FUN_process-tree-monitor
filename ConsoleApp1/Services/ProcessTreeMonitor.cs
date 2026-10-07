@@ -7,7 +7,7 @@ using System.Collections.Concurrent;
 
 namespace ConsoleApp1.Services;
 
-public class ProcessTreeMonitor: IDisposable
+public class ProcessTreeMonitor : IDisposable
 {
 
     private const string _sessionKey = "process-tree-monitor-custom-session";
@@ -21,7 +21,7 @@ public class ProcessTreeMonitor: IDisposable
 
     private readonly CancellationTokenSource _cts = new();
 
-    public Action<ProcessNode, EProcessAction> _onProcessTreeChange;
+    public Action<ProcessNode, EProcessAction> onProcessTreeChange;
 
     public ProcessTreeMonitor()
     {
@@ -49,10 +49,6 @@ public class ProcessTreeMonitor: IDisposable
         kernelParser.ProcessStop += OnProcessStop;
         kernelParser.ProcessDCStart += OnProcessDCStart;
         kernelParser.ProcessDCStop += OnProcessDCStop;
-
-        _traceEventSource.AllEvents += (data) => {
-            //Console.WriteLine($"event is = {data.GetType()}");
-        };
 
         _eventProcessTask = Task.Run(() =>
         {
@@ -87,34 +83,35 @@ public class ProcessTreeMonitor: IDisposable
             added.CreationActivityId = node.CreationActivityId;
         }
 
-        if(added != null)
+        if (added != null)
         {
             LinkToParent(added);
         }
-        _onProcessTreeChange?.Invoke(added, EProcessAction.Created);
+        onProcessTreeChange?.Invoke(added, EProcessAction.Created);
 
     }
 
     public void OnProcessStop(ProcessTraceData data)
     {
-        if(_processes.TryRemove(data.ProcessID, out var node))
+        if (_processes.TryRemove(data.ProcessID, out var node))
         {
             node.IsTerminated = true;
 
             if (node.Parent != null)
             {
-                if(_processes.TryGetValue(node.Parent.ProcessId, out var parentNode))
+                if (_processes.TryGetValue(node.Parent.ProcessId, out var parentNode))
                 {
                     // TODO: Тейкнуть процесс из родительского либо делегировать это задачу на ProcessMonitorSessionManager;
                 }
             }
 
-            _onProcessTreeChange?.Invoke(node, EProcessAction.Terminated);
+            onProcessTreeChange?.Invoke(node, EProcessAction.Terminated);
         }
     }
 
     public void OnProcessDCStart(ProcessTraceData data)
     {
+        Console.WriteLine("xyz100zyx");
         var node = new ProcessNode
         {
             ProcessId = data.ProcessID,
@@ -124,7 +121,7 @@ public class ProcessTreeMonitor: IDisposable
         };
 
         _processes.TryAdd(node.ProcessId, node);
-        _onProcessTreeChange?.Invoke(node, EProcessAction.Created);
+        onProcessTreeChange?.Invoke(node, EProcessAction.Created);
     }
 
     public void OnProcessDCStop(ProcessTraceData data)
@@ -132,13 +129,13 @@ public class ProcessTreeMonitor: IDisposable
         if (_processes.TryRemove(data.ProcessID, out var node))
         {
             node.IsTerminated = true;
-            _onProcessTreeChange?.Invoke(node, EProcessAction.Terminated);
+            onProcessTreeChange?.Invoke(node, EProcessAction.Terminated);
         }
     }
 
     private void LinkToParent(ProcessNode node)
     {
-        if(_processes.TryGetValue(node.ParentProcessId, out var parent))
+        if (_processes.TryGetValue(node.ParentProcessId, out var parent))
         {
             node.Parent = parent;
 
@@ -146,7 +143,8 @@ public class ProcessTreeMonitor: IDisposable
             {
                 parent.Children.Add(node);
             }
-        } else
+        }
+        else
         {
             node.Parent = null;
         }
@@ -166,6 +164,33 @@ public class ProcessTreeMonitor: IDisposable
     public IEnumerable<ProcessNode> GetRoots()
     {
         return _processes.Values.Where(p => p.Parent == null && !p.IsTerminated);
+    }
+
+    /// <summary>
+    /// [DRAFT]: ремейк дерева + реснепшот
+    /// </summary>
+    public void CaptureCurrentState()
+    {
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            try
+            {
+                using var rundownSession = new TraceEventSession($"ProcessTreeRundownSession_{Guid.NewGuid():N}");
+
+                rundownSession.EnableKernelProvider(KernelTraceEventParser.Keywords.Process);
+
+                rundownSession.Source.Kernel.ProcessDCStart += OnProcessDCStart;
+
+                var rundownThread = new Thread(() => rundownSession.Source.Process()) { IsBackground = true };
+                rundownThread.Start();
+                Thread.Sleep(1500);
+                rundownSession.Stop();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка генерации Rundown состояния: {ex.Message}");
+            }
+        });
     }
 
     public void Dispose()
